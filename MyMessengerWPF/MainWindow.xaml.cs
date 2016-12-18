@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -23,21 +24,17 @@ namespace MyMessengerWPF
     /// </summary>
     public partial class MainWindow : MetroWindow
     {
-        public ManagedMessenger.ManagedMessenger msg;
+        private readonly ManagedMessenger.ManagedMessenger _msg;
 
-        public ObservableCollection<User> UserCollection = new ObservableCollection<User>();
+        private readonly ObservableCollection<User> _userCollection = new ObservableCollection<User>();
 
-        public Dictionary<string, List<string>> MessengerHistory =
-            new Dictionary<string, List<string>>();
+        private readonly Dictionary<string, ObservableCollection<ManagedMessage>> _messengerHistory =
+            new Dictionary<string, ObservableCollection<ManagedMessage>>();
 
-        public ObservableCollection<string> displayedHistory = new ObservableCollection<string>();
-        public ObservableCollection<string> DisplayedHistory
-        {
-            get
-            {return displayedHistory;}
-            set
-            {displayedHistory = value;}
-        }
+        private User _activeConversationUser = null;
+
+
+        public Data<User> CurrentUser { get; set; } = new Data<User>(null);
 
         public MainWindow()
         {
@@ -45,96 +42,93 @@ namespace MyMessengerWPF
             InitializeComponent();
             TextPanel.Visibility = Visibility.Hidden;
             //Item Sources
-            ActiveUsers.ItemsSource = UserCollection;
-            MessengerHistoryList.ItemsSource = DisplayedHistory;
+            ActiveUsers.ItemsSource = _userCollection;
+            MessengerHistoryList.ItemsSource = null;
+            
             //Initialise messenger
-            msg = new ManagedMessenger.ManagedMessenger("127.0.0.1", 5222);
-            msg.Connect();
+            _msg = new ManagedMessenger.ManagedMessenger("127.0.0.1", 5222);
+            _msg.Connect();
             //Subscribe on events
-            msg.OnLogin += Msg_OnLogin;
-            msg.OnUsersRequested += Msg_OnUsersRequested;
-            msg.OnReceivedMessage += Msg_OnReceivedMessage;
+            _msg.OnLogin += Msg_OnLogin;
+            _msg.OnUsersRequested += Msg_OnUsersRequested;
+            _msg.OnReceivedMessage += Msg_OnReceivedMessage;
+
+
+           
         }
 
         private void Msg_OnReceivedMessage(object sender, DataTwoEventArgs<string, ManagedMessage> e)
         {
-            //if (MessengerHistory.ContainsKey(e.Data1))
-            //{
-            //
-            //}
-            //
-            //this.Dispatcher.BeginInvoke(
-            //  new Action(() =>
-            //  {
-            //      DisplayedHistory = new ObservableCollection<string>(MessengerHistory[((User)ActiveUsers.SelectedItem).UserId]);
-            //  }));
+            var sendUser = e.Data1;
+            if (_messengerHistory.ContainsKey(sendUser))
+            {
+                Dispatcher.BeginInvoke(new Action(()=>_messengerHistory[sendUser].Add(e.Data2)));
+            }
         }
 
         private void Msg_OnUsersRequested(object sender, DataTwoEventArgs<ResultStatus, List<User>> e)
         {
             if (e.Data1 == ResultStatus.Ok)
-                this.Dispatcher.BeginInvoke(new Action(() => e.Data2.ForEach(UserCollection.Add)));
+                this.Dispatcher.BeginInvoke(new Action(() => this.AddUsers(e.Data2)));
+        }
+
+        private void AddUsers(List<User> users)
+        {
+            foreach (var u in users)
+                if (!this._userCollection.Contains(u))
+                {
+                    _userCollection.Add(u);
+                    _messengerHistory.Add(u.Username, new ObservableCollection<ManagedMessage>());
+                }
         }
 
         private void Msg_OnLogin(object sender, DataEventArgs<ResultStatus> e)
         {
             if (e.Data == ResultStatus.Ok)
             {
-                msg.BeginRequestUsers();
+                _msg.BeginRequestUsers();
                 //close flyout
                 this.Dispatcher.BeginInvoke(
                 new Action(() =>
                 {
                     LoginFlyout.IsOpen = false;
-                    LogOutButton.Visibility = Visibility.Visible;
+                    LoggedInCommands.Visibility = Visibility.Visible;
                 }));
             }
         }
 
-        private void LoginFlyout_KeyDown(object sender, KeyEventArgs e)
+        private void KeyDownLogin(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter)
             {
                 string login = Login.Text;
                 string password = Password.Password;
                 //login function from dll;
-                msg.BeginLogin(new User(login, password, new SecurityPolicy()));
+                this.CurrentUser.Value = new User(login, password, new SecurityPolicy());
+                _msg.BeginLogin(CurrentUser.Value);
             }
         }
 
 
         private void LogOutButton_Click(object sender, RoutedEventArgs e)
         {
-            msg.Disconnect();
+            _msg.Disconnect();
+            this.CurrentUser.Value = null;
             //////////////////////////
             Login.Text = "";
             Password.Clear();
-            LogOutButton.Visibility = Visibility.Hidden;
+            LoggedInCommands.Visibility = Visibility.Hidden;
             LoginFlyout.IsOpen = true;
         }
 
         private void SendMessengeButton_Click(object sender, RoutedEventArgs e)
         {
-            if (MessengeBox.Text.Length != 0)
-            {
-                msg.BeginSend((User)ActiveUsers.SelectedItem, MessengeBox.Text);
-                //add messege to history
-                    if (MessengerHistory.ContainsKey(((User)ActiveUsers.SelectedItem).UserId))
-                        MessengerHistory[((User)ActiveUsers.SelectedItem).UserId].Add(MessengeBox.Text);
-                    else
-                    {
-                        List<string> history = new List<string>();
-                        history.Add(MessengeBox.Text);
-                        MessengerHistory.Add(((User)ActiveUsers.SelectedItem).UserId, history);
-                    }
-                MessengeBox.Text = "";
-                //reload current history
-                this.Dispatcher.BeginInvoke(
-                new Action(() =>
-                {
-                    DisplayedHistory = new ObservableCollection<string>(MessengerHistory[((User)ActiveUsers.SelectedItem).UserId]);
-                }));
-            }
+            var msg_text = MessengeBox.Text;
+            if (msg_text.Length == 0) return;
+            var message = _msg.BeginSend(this._activeConversationUser, msg_text);
+            _messengerHistory[_activeConversationUser.Username].Add(message);
+            //add message to history
+            MessengeBox.Text = "";
         }
 
         private void MessengeBox_KeyDown(object sender, KeyEventArgs e)
@@ -146,12 +140,8 @@ namespace MyMessengerWPF
         private void ActiveUsers_SelectionChanged(object sender, SelectionChangedEventArgs e)
         { 
             TextPanel.Visibility = Visibility.Visible;
-            this.Dispatcher.BeginInvoke(
-               new Action(() =>
-               {
-                   if(MessengerHistory.ContainsKey(((User)ActiveUsers.SelectedItem).UserId))
-                       DisplayedHistory = new ObservableCollection<string>(MessengerHistory[((User)ActiveUsers.SelectedItem).UserId]);
-               }));
+            _activeConversationUser = (User) ActiveUsers.SelectedItem;
+            MessengerHistoryList.ItemsSource = _messengerHistory[_activeConversationUser.Username];
         }
 
 

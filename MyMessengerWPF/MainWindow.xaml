@@ -14,15 +14,16 @@
     </i:Interaction.Behaviors>
 
     <Controls:MetroWindow.RightWindowCommands>
-        <Controls:WindowCommands>
-            <Button x:Name="LogOutButton" Content="Log-Out" Visibility="Hidden" Click="LogOutButton_Click"/>
+        <Controls:WindowCommands x:Name="LoggedInCommands" Visibility="Hidden">
+            <Label x:Name="CurrentUsername" Content="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=local:MainWindow}, Path=CurrentUser.Value.Username}"></Label>
+            <Button x:Name="LogOutButton" Content="Log-Out" Click="LogOutButton_Click"/>
         </Controls:WindowCommands>
     </Controls:MetroWindow.RightWindowCommands>
 
     <Controls:MetroWindow.Flyouts>
         <Controls:FlyoutsControl>
             <Controls:Flyout x:Name="LoginFlyout" VerticalAlignment="Bottom" HorizontalAlignment="Stretch" Position="top"
-              Width="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=Controls:MetroWindow}, Path=ActualWidth}" Height="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=Controls:MetroWindow}, Path=ActualHeight}" IsOpen="true" CloseButtonVisibility="Collapsed" KeyDown="LoginFlyout_KeyDown"  >
+              Width="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=Controls:MetroWindow}, Path=ActualWidth}" Height="{Binding RelativeSource={RelativeSource FindAncestor, AncestorType=Controls:MetroWindow}, Path=ActualHeight}" IsOpen="true" CloseButtonVisibility="Collapsed" KeyDown="KeyDownLogin"  >
                 <Grid x:Name="MainGrid" Background="#FF151414" VerticalAlignment="Stretch"  HorizontalAlignment="Stretch">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="76*"/>
@@ -56,12 +57,17 @@
                     <RowDefinition Height="258*"/>
                     <RowDefinition Height="61*"/>
                 </Grid.RowDefinitions>
-                <ListBox x:Name="MessengerHistoryList" Margin="0,0,0,1" Background="#FF131313" BorderBrush="Black">
+                <ListBox x:Name="MessengerHistoryList" Background="#FF131313" BorderBrush="Black">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <StackPanel>
-                                <TextBlock Text="{Binding}"/>
-                            </StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="30*"/>
+                                    <ColumnDefinition Width="170*"/>
+                                </Grid.ColumnDefinitions>
+                                <Label Content="{Binding Path=Time}" Grid.Column="0"></Label>
+                                <Label Content="{Binding Path=Text}" Grid.Column="1"></Label>
+                            </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
